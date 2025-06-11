@@ -202,7 +202,7 @@ jobs:
     strategy:
       matrix:
         macos-version: [macos-13, macos-14]
-        llvm-version: [18]
+        llvm-version: [19]
     env:
       CMAKE_BUILD_PARALLEL_LEVEL: 4
       CTEST_PARALLEL_LEVEL: 4
