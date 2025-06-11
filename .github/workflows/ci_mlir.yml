@@ -197,76 +197,50 @@ jobs:
           cmake --build build --config Release --target check-quantum-opt
 
   cpp-test-mlir-macos:
-    name: 🍎 Test MLIR with LLVM@${{ matrix.llvm-version }}
-    runs-on: macos-13
+    name: 🍎 Test MLIR on macOS ${{ matrix.macos-version }}
+    runs-on: ${{ matrix.macos-version }}
     strategy:
       matrix:
-        llvm-version: [19, 20]
+        macos-version: [macos-13, macos-14]
     env:
       CMAKE_BUILD_PARALLEL_LEVEL: 4
       CTEST_PARALLEL_LEVEL: 4
       FORCE_COLOR: 3
-      PATH: "/usr/local/opt/llvm@${{ matrix.llvm-version }}/bin:${PATH}"
-      LDFLAGS: "-L/usr/local/opt/llvm@${{ matrix.llvm-version }}/lib"
-      CPPFLAGS: "-I/usr/local/opt/llvm@${{ matrix.llvm-version }}/include"
     steps:
-      # Install core utilities
-      - name: Install core utilities
-        run: |
-          brew install coreutils
-          brew install gnu-tar
-          brew link --overwrite gnu-tar
-          echo "PATH=\"/usr/local/opt/coreutils/bin:\$PATH\"" >> $GITHUB_ENV
-          echo "PATH=\"/usr/local/opt/gnu-tar/bin:\$PATH\"" >> $GITHUB_ENV
-      # Checkout repository
+      # check out the repository
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      # Install llvm and mlir
+
+      # install llvm and mlir using brew
       - name: Install llvm and mlir
         run: |
-          brew install llvm@${{ matrix.llvm-version }}
-          brew link llvm@${{ matrix.llvm-version }} --force
-          brew link --overwrite llvm@${{ matrix.llvm-version }}
-          echo "CC=clang-${{ matrix.llvm-version }}" >> $GITHUB_ENV
-          echo "CXX=clang++-${{ matrix.llvm-version }}" >> $GITHUB_ENV
-          echo "MLIR_DIR=/opt/homebrew/opt/llvm@${{ matrix.llvm-version }}/lib/cmake/mlir" >> $GITHUB_ENV
-          echo "LLVM_DIR=/opt/homebrew/opt/llvm@${{ matrix.llvm-version }}/lib/cmake/llvm" >> $GITHUB_ENV
-          # Verify installation
-          clang++-${{ matrix.llvm-version }} --version
-      # Verify compiler paths
-      - name: Verify compiler paths
-        run: |
-          echo "CXX path: $(which clang++-${{ matrix.llvm-version }})"
-          echo "CC path: $(which clang-${{ matrix.llvm-version }})"
-      # Setup ccache for faster builds
-      - name: Setup ccache
-        uses: Chocobo1/setup-ccache-action@v1
-        with:
-          prepend_symlinks_to_path: false
-          override_cache_key: c++-tests-mlir
-      # Setup mold as linker
-      - name: Set up mold as linker
-        uses: rui314/setup-mold@v1
-      # Setup uv for Python package management
+          brew install llvm@18 ninja
+          echo "CC=/opt/homebrew/opt/llvm@18/bin/clang" >> $GITHUB_ENV
+          echo "CXX=/opt/homebrew/opt/llvm@18/bin/clang++" >> $GITHUB_ENV
+          echo "MLIR_DIR=/opt/homebrew/opt/llvm@18/lib/cmake/mlir" >> $GITHUB_ENV
+          echo "LLVM_DIR=/opt/homebrew/opt/llvm@18/lib/cmake/llvm" >> $GITHUB_ENV
+          echo "/opt/homebrew/opt/llvm@18/bin" >> $GITHUB_PATH
+
+      # set up uv for faster Python package management
       - name: Install the latest version of uv
         uses: astral-sh/setup-uv@v6
         with:
           python-version: 3.13
           activate-environment: true
-      # Install Ninja
-      - name: Install Ninja
-        run: uv tool install ninja
-      # Install lit test runner
+
+      # install lit test runner
       - name: Install lit
         run: uv pip install lit
-      # Configure CMake for MLIR
+
+      # configure the project with CMake
       - name: Configure CMake for MLIR
         run: |
           cmake -G Ninja -S . -B build \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DBUILD_MQT_CORE_MLIR=ON \
-            -DLLVM_EXTERNAL_LIT=$(which lit)
-      # Build and run tests
-      - name: Build MLIR components and run lit tests
+          -DCMAKE_BUILD_TYPE=Release \
+          -DBUILD_MQT_CORE_MLIR=ON \
+          -DLLVM_EXTERNAL_LIT=$(which lit)
+
+      # build and run lit tests
+      - name: Build MLIR components and directly run lit tests
         run: cmake --build build --config Release --target check-quantum-opt
