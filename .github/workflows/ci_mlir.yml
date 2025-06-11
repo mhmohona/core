@@ -206,6 +206,9 @@ jobs:
       CMAKE_BUILD_PARALLEL_LEVEL: 4
       CTEST_PARALLEL_LEVEL: 4
       FORCE_COLOR: 3
+      PATH: "/usr/local/opt/llvm@${{ matrix.llvm-version }}/bin:${PATH}"
+      LDFLAGS: "-L/usr/local/opt/llvm@${{ matrix.llvm-version }}/lib"
+      CPPFLAGS: "-I/usr/local/opt/llvm@${{ matrix.llvm-version }}/include"
     steps:
       # Checkout repository
       - uses: actions/checkout@v4
