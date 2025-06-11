@@ -210,6 +210,14 @@ jobs:
       LDFLAGS: "-L/usr/local/opt/llvm@${{ matrix.llvm-version }}/lib"
       CPPFLAGS: "-I/usr/local/opt/llvm@${{ matrix.llvm-version }}/include"
     steps:
+      # Install core utilities
+      - name: Install core utilities
+        run: |
+          brew install coreutils
+          brew install gnu-tar
+          brew link --overwrite gnu-tar
+          echo "PATH=\"/usr/local/opt/coreutils/bin:\$PATH\"" >> $GITHUB_ENV
+          echo "PATH=\"/usr/local/opt/gnu-tar/bin:\$PATH\"" >> $GITHUB_ENV
       # Checkout repository
       - uses: actions/checkout@v4
         with:
