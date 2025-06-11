@@ -197,50 +197,65 @@ jobs:
           cmake --build build --config Release --target check-quantum-opt
 
   cpp-test-mlir-macos:
-    name: 🍎 Test MLIR on macOS ${{ matrix.macos-version }}
+    name: 🍎 Test MLIR with LLVM@${{ matrix.llvm-version }} on ${{ matrix.macos-version }}
     runs-on: ${{ matrix.macos-version }}
     strategy:
       matrix:
         macos-version: [macos-13, macos-14]
+        llvm-version: [18]
     env:
       CMAKE_BUILD_PARALLEL_LEVEL: 4
       CTEST_PARALLEL_LEVEL: 4
       FORCE_COLOR: 3
     steps:
-      # check out the repository
+      # Check out the repository
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # install llvm and mlir using brew
-      - name: Install llvm and mlir
+      # Install llvm and ninja
+      - name: Install llvm@${{ matrix.llvm-version }} and Ninja via Homebrew
         run: |
-          brew install llvm@18 ninja
-          echo "CC=/opt/homebrew/opt/llvm@18/bin/clang" >> $GITHUB_ENV
-          echo "CXX=/opt/homebrew/opt/llvm@18/bin/clang++" >> $GITHUB_ENV
-          echo "MLIR_DIR=/opt/homebrew/opt/llvm@18/lib/cmake/mlir" >> $GITHUB_ENV
-          echo "LLVM_DIR=/opt/homebrew/opt/llvm@18/lib/cmake/llvm" >> $GITHUB_ENV
-          echo "/opt/homebrew/opt/llvm@18/bin" >> $GITHUB_PATH
+          brew install llvm@${{ matrix.llvm-version }} ninja
 
-      # set up uv for faster Python package management
+      # Set compiler and environment variables
+      - name: Set compiler and CMake environment variables
+        run: |
+          if [ "$(uname -m)" = "x86_64" ]; then
+            LLVM_PREFIX="/usr/local/opt/llvm@${{ matrix.llvm-version }}"
+          else
+            LLVM_PREFIX="/opt/homebrew/opt/llvm@${{ matrix.llvm-version }}"
+          fi
+
+          echo "CC=$LLVM_PREFIX/bin/clang" >> $GITHUB_ENV
+          echo "CXX=$LLVM_PREFIX/bin/clang++" >> $GITHUB_ENV
+          echo "LLVM_DIR=$LLVM_PREFIX/lib/cmake/llvm" >> $GITHUB_ENV
+          echo "MLIR_DIR=$LLVM_PREFIX/lib/cmake/mlir" >> $GITHUB_ENV
+          echo "$LLVM_PREFIX/bin" >> $GITHUB_PATH
+
+      # Set up uv for faster Python package management
       - name: Install the latest version of uv
         uses: astral-sh/setup-uv@v6
         with:
           python-version: 3.13
           activate-environment: true
 
-      # install lit test runner
+      # Install lit
       - name: Install lit
         run: uv pip install lit
 
-      # configure the project with CMake
+      # Configure with CMake
       - name: Configure CMake for MLIR
         run: |
           cmake -G Ninja -S . -B build \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DBUILD_MQT_CORE_MLIR=ON \
-          -DLLVM_EXTERNAL_LIT=$(which lit)
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_MQT_CORE_MLIR=ON \
+            -DCMAKE_C_COMPILER=$CC \
+            -DCMAKE_CXX_COMPILER=$CXX \
+            -DLLVM_DIR=$LLVM_DIR \
+            -DMLIR_DIR=$MLIR_DIR \
+            -DLLVM_EXTERNAL_LIT=$(which lit)
 
-      # build and run lit tests
+      # Build and run tests
       - name: Build MLIR components and directly run lit tests
         run: cmake --build build --config Release --target check-quantum-opt
