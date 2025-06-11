@@ -216,10 +216,18 @@ jobs:
         run: |
           brew install llvm@${{ matrix.llvm-version }}
           brew link llvm@${{ matrix.llvm-version }} --force
+          brew link --overwrite llvm@${{ matrix.llvm-version }}
           echo "CC=clang-${{ matrix.llvm-version }}" >> $GITHUB_ENV
           echo "CXX=clang++-${{ matrix.llvm-version }}" >> $GITHUB_ENV
           echo "MLIR_DIR=/opt/homebrew/opt/llvm@${{ matrix.llvm-version }}/lib/cmake/mlir" >> $GITHUB_ENV
           echo "LLVM_DIR=/opt/homebrew/opt/llvm@${{ matrix.llvm-version }}/lib/cmake/llvm" >> $GITHUB_ENV
+          # Verify installation
+          clang++-${{ matrix.llvm-version }} --version
+      # Verify compiler paths
+      - name: Verify compiler paths
+        run: |
+          echo "CXX path: $(which clang++-${{ matrix.llvm-version }})"
+          echo "CC path: $(which clang-${{ matrix.llvm-version }})"
       # Setup ccache for faster builds
       - name: Setup ccache
         uses: Chocobo1/setup-ccache-action@v1
