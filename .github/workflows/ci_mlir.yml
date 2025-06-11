@@ -195,3 +195,53 @@ jobs:
           Write-Output "Batch file created at C:\Windows\quantum-opt pointing to $targetPath"
 
           cmake --build build --config Release --target check-quantum-opt
+
+  cpp-test-mlir-macos:
+    name: 🍎 Test MLIR on macOS ${{ matrix.macos-version }}
+    runs-on: ${{ matrix.macos-version }}
+    strategy:
+      matrix:
+        macos-version: [macos-13, macos-14]
+    env:
+      CMAKE_BUILD_PARALLEL_LEVEL: 4
+      CTEST_PARALLEL_LEVEL: 4
+      FORCE_COLOR: 3
+    steps:
+      # check out the repository
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # install llvm and mlir using brew
+      - name: Install llvm and mlir
+        run: |
+          brew install llvm@18 ninja
+          echo "CC=/opt/homebrew/opt/llvm@18/bin/clang" >> $GITHUB_ENV
+          echo "CXX=/opt/homebrew/opt/llvm@18/bin/clang++" >> $GITHUB_ENV
+          echo "MLIR_DIR=/opt/homebrew/opt/llvm@18/lib/cmake/mlir" >> $GITHUB_ENV
+          echo "LLVM_DIR=/opt/homebrew/opt/llvm@18/lib/cmake/llvm" >> $GITHUB_ENV
+          echo "/opt/homebrew/opt/llvm@18/bin" >> $GITHUB_PATH
+
+      # set up uv for faster Python package management
+      - name: Install the latest version of uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: 3.13
+          activate-environment: true
+
+      # install lit test runner
+      - name: Install lit
+        run: uv pip install lit
+
+      # configure the project with CMake
+      - name: Configure CMake for MLIR
+        run: |
+          cmake -G Ninja -S . -B build \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DBUILD_MQT_CORE_MLIR=ON \
+          -DLLVM_EXTERNAL_LIT=$(which lit)
+
+      # build and run lit tests
+      - name: Build MLIR components and directly run lit tests
+        run: cmake --build build --config Release --target check-quantum-opt
+          
