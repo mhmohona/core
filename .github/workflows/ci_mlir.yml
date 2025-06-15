@@ -355,6 +355,11 @@ jobs:
 
       - name: Generate coverage report
         run: |
+          # Install lcov
+          sudo apt-get update
+          sudo apt-get install -y lcov
+          
+          # Generate coverage report
           lcov --capture --directory build --output-file coverage.info
           lcov --extract coverage.info '*/src/*' --output-file mlir_coverage.info
           lcov --remove mlir_coverage.info 'tools/quantum-opt/test/*'
