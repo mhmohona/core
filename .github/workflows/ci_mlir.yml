@@ -326,6 +326,11 @@ jobs:
       # configure the project with CMake for coverage
       - name: Configure CMake for MLIR Coverage
         run: |
+          # Install required build tools
+          sudo apt-get update
+          sudo apt-get install -y cmake
+          
+          # Run CMake configuration
           cmake -G Ninja -S . -B build \
             -DCMAKE_BUILD_TYPE=Debug \
             -DBUILD_MQT_CORE_MLIR=ON \
