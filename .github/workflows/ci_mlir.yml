@@ -90,32 +90,29 @@ jobs:
       # build the project and run the tests
       - name: Build MLIR components and directly run lit tests
         run: cmake --build build --config Release --target check-quantum-opt
-
-      # Configure and build with coverage
-      - name: Configure CMake for MLIR with Coverage
+  
+      # Add these steps to the cpp-test-mlir job
+      - name: Configure coverage build (LLVM 20 only)
+        if: matrix.llvm-version == 20
         run: |
-          cmake -G Ninja -S . -B build \
-            -DCMAKE_BUILD_TYPE=Release \
+          cmake -G Ninja -S . -B build-coverage \
+            -DCMAKE_BUILD_TYPE=Debug \
             -DBUILD_MQT_CORE_MLIR=ON \
             -DLLVM_EXTERNAL_LIT=$(which lit) \
-            -DCMAKE_CXX_COMPILER="clang++-${{ matrix.llvm-version }}" \
-            -DCMAKE_C_COMPILER="clang-${{ matrix.llvm-version }}" \
-            -DCMAKE_CXX_FLAGS="-fprofile-arcs -ftest-coverage" \
-            -DCMAKE_EXE_LINKER_FLAGS="--coverage"
+            -DCMAKE_CXX_FLAGS="-fprofile-instr-generate -fcoverage-mapping" \
+            -DCMAKE_C_FLAGS="-fprofile-instr-generate -fcoverage-mapping"
 
-      # Build and collect coverage
-      - name: Build MLIR components and collect coverage
-        run: |
-          cmake --build build --config Release --target check-quantum-opt
-          gcovr -r . --html --html-details -o ${GITHUB_WORKSPACE}/coverage/index.html
-          codecov --file ${GITHUB_WORKSPACE}/coverage/index.html --flags mlir
+      - name: Build coverage instrumentation (LLVM 20 only)
+        if: matrix.llvm-version == 20
+        run: cmake --build build-coverage --target quantum-opt
 
-      # Upload artifacts
-      - name: Upload Coverage Report
+      - name: Archive coverage build
+        if: matrix.llvm-version == 20
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-report
-          path: ${{ github.workspace }}/coverage/index.html  
+          name: coverage-build-${{ matrix.llvm-version }}
+          path: build-coverage
+          retention-days: 1        
 
   cpp-test-mlir-windows:
     name: 🏁 Test MLIR with LLVM@${{ matrix.llvm-version }}
@@ -285,3 +282,57 @@ jobs:
       # Build and run tests
       - name: Build MLIR components and directly run lit tests
         run: cmake --build build --config Release --target check-quantum-opt
+
+  coverage-collection-mlir:
+    name: 📊 Collect MLIR Coverage
+    runs-on: ubuntu-24.04
+    needs: cpp-test-mlir  # Depends on test job
+    env:
+      LLVM_VERSION: 20  # Focus on one version for coverage
+      LLVM_PROFILE_FILE: "quantum-opt-%p.profraw"
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-build-${{ env.LLVM_VERSION }}
+          path: build-coverage
+
+      - name: Run tests with coverage instrumentation
+        run: |
+          cd build-coverage
+          ctest -R quantum-opt -V --output-on-failure
+
+      - name: Process coverage data
+        run: |
+          cd build-coverage
+          # Merge raw profiles
+          llvm-profdata-20 merge -sparse $LLVM_PROFILE_FILE -o quantum-opt.profdata
+          
+          # Generate lcov format
+          llvm-cov-20 show ./mlir/tools/quantum-opt/quantum-opt \
+            -instr-profile=quantum-opt.profdata \
+            -format=lcov > lcov.info
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: mlir-coverage-report
+          path: build-coverage/lcov.info
+
+  coverage-upload-mlir:
+    name: ⬆️ Upload MLIR Coverage
+    runs-on: ubuntu-latest
+    needs: coverage-collection-mlir
+    steps:
+      - name: Download coverage report
+        uses: actions/download-artifact@v4
+        with:
+          name: mlir-coverage-report
+
+      - name: Upload to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          file: lcov.info
+          flags: mlir
+          name: mlir-coverage
+          fail_ci_if_error: false        
