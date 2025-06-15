@@ -91,6 +91,32 @@ jobs:
       - name: Build MLIR components and directly run lit tests
         run: cmake --build build --config Release --target check-quantum-opt
 
+      # Configure and build with coverage
+      - name: Configure CMake for MLIR with Coverage
+        run: |
+          cmake -G Ninja -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_MQT_CORE_MLIR=ON \
+            -DLLVM_EXTERNAL_LIT=$(which lit) \
+            -DCMAKE_CXX_COMPILER="clang++-${{ matrix.llvm-version }}" \
+            -DCMAKE_C_COMPILER="clang-${{ matrix.llvm-version }}" \
+            -DCMAKE_CXX_FLAGS="-fprofile-arcs -ftest-coverage" \
+            -DCMAKE_EXE_LINKER_FLAGS="--coverage"
+
+      # Build and collect coverage
+      - name: Build MLIR components and collect coverage
+        run: |
+          cmake --build build --config Release --target check-quantum-opt
+          gcovr -r . --html --html-details -o ${GITHUB_WORKSPACE}/coverage/index.html
+          codecov --file ${GITHUB_WORKSPACE}/coverage/index.html --flags mlir
+
+      # Upload artifacts
+      - name: Upload Coverage Report
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage-report
+          path: ${{ github.workspace }}/coverage/index.html   
+
   cpp-test-mlir-windows:
     name: 🏁 Test MLIR with LLVM@${{ matrix.llvm-version }}
     runs-on: windows-latest
@@ -259,116 +285,3 @@ jobs:
       # Build and run tests
       - name: Build MLIR components and directly run lit tests
         run: cmake --build build --config Release --target check-quantum-opt
-
-  cpp-test-mlir-coverage:
-    name: 📊 MLIR Coverage with LLVM@${{ matrix.llvm-version }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    strategy:
-      matrix:
-        llvm-version: [19, 20]
-    env:
-      CMAKE_BUILD_PARALLEL_LEVEL: 4
-      CTEST_PARALLEL_LEVEL: 4
-      FORCE_COLOR: 3
-    steps:
-      # check out the repository
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      # install a specific version of the LLVM toolchain
-      - name: Install llvm and mlir
-        run: |
-          sudo apt-get update
-          wget https://apt.llvm.org/llvm.sh -O ${{ runner.temp }}/llvm_install.sh
-          chmod +x ${{ runner.temp }}/llvm_install.sh
-          if sudo ${{ runner.temp }}/llvm_install.sh ${{ matrix.llvm-version }}; then
-            sudo apt-get install -y libmlir-${{ matrix.llvm-version }}-dev \
-                        mlir-${{ matrix.llvm-version }}-tools \
-                        clang-${{ matrix.llvm-version }} \
-                        llvm-${{ matrix.llvm-version }}-tools \
-             || exit 1
-          else
-            echo "Installation from script failed."
-            exit 1
-          fi
-          echo "CC=clang-${{ matrix.llvm-version }}" >> $GITHUB_ENV
-          echo "CXX=clang++-${{ matrix.llvm-version }}" >> $GITHUB_ENV
-          echo "MLIR_DIR=/usr/lib/llvm-${{ matrix.llvm-version }}/lib/cmake/mlir" >> $GITHUB_ENV
-          echo "LLVM_DIR=/usr/lib/llvm-${{ matrix.llvm-version }}/lib/cmake/llvm" >> $GITHUB_ENV
-
-      # set up ccache for faster C++ builds
-      - name: Setup ccache
-        uses: Chocobo1/setup-ccache-action@v1
-        with:
-          prepend_symlinks_to_path: false
-          override_cache_key: c++-coverage-mlir
-
-      # set up mold as linker for faster C++ builds
-      - name: Set up mold as linker
-        uses: rui314/setup-mold@v1
-
-      # set up uv for faster Python package management
-      - name: Install the latest version of uv
-        uses: astral-sh/setup-uv@v6
-        with:
-          python-version: 3.13
-          activate-environment: true
-
-      # make sure ninja is installed
-      - name: Install Ninja
-        run: uv tool install ninja
-
-      # make sure the lit test runner is installed
-      - name: Install lit
-        run: uv pip install lit
-
-      - name: Configure CMake for MLIR Coverage
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y wget build-essential
-          wget https://github.com/Kitware/CMake/releases/download/v3.24.1/cmake-3.24.1-Linux-x86_64.sh -q -O /tmp/cmake-install.sh
-          chmod u+x /tmp/cmake-install.sh
-          mkdir /opt/cmake-3.24.1
-          /tmp/cmake-install.sh --skip-license --prefix=/opt/cmake-3.24.1
-          rm /tmp/cmake-install.sh
-          
-          # Skip symbolic links since they might already exist
-          echo "CMake 3.24.1 installed successfully"
-          
-          cmake -G Ninja -S . -B build \
-            -DCMAKE_BUILD_TYPE=Debug \
-            -DBUILD_MQT_CORE_MLIR=ON \
-            -DLLVM_EXTERNAL_LIT=$(which lit) \
-            -DCOVERAGE=ON \
-            -DMLIR_ENABLE_COVERAGE=ON \
-            -DMLIR_COVERAGE_EXCLUDE="tools/quantum-opt/test/*" \
-            -DENABLE_COVERAGE=ON \
-            -DCMAKE_C_COMPILER=$CC \
-            -DCMAKE_CXX_COMPILER=$CXX
-
-      # build the project and run the tests with coverage
-      - name: Build MLIR components and run tests with coverage
-        run: |
-          cmake --build build --config Debug --target check-quantum-opt
-
-      - name: Generate coverage report
-        run: |
-          # Install lcov
-          sudo apt-get update
-          sudo apt-get install -y lcov
-          
-          # Generate coverage report
-          lcov --capture --directory build --output-file coverage.info
-          lcov --extract coverage.info '*/src/*' --output-file mlir_coverage.info
-          lcov --remove mlir_coverage.info 'tools/quantum-opt/test/*'
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
-        with:
-          files: mlir_coverage.info
-          flags: MLIR
-          name: MLIR Coverage Report
-          fail_ci_if_error: true
-          use_oidc: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork) }}
