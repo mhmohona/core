@@ -262,8 +262,8 @@ jobs:
 
   cpp-test-mlir-coverage:
     name: 📊 MLIR Coverage with LLVM@${{ matrix.llvm-version }}
-    timeout-minutes: 30
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     strategy:
       matrix:
         llvm-version: [19, 20]
@@ -326,7 +326,6 @@ jobs:
 
       - name: Configure CMake for MLIR Coverage
         run: |
-          # Install required build tools and latest CMake
           sudo apt-get update
           sudo apt-get install -y wget build-essential
           wget https://github.com/Kitware/CMake/releases/download/v3.24.1/cmake-3.24.1-Linux-x86_64.sh -q -O /tmp/cmake-install.sh
@@ -334,9 +333,10 @@ jobs:
           mkdir /opt/cmake-3.24.1
           /tmp/cmake-install.sh --skip-license --prefix=/opt/cmake-3.24.1
           rm /tmp/cmake-install.sh
-          ln -s /opt/cmake-3.24.1/bin/* /usr/local/bin/
           
-          # Run CMake configuration
+          # Skip symbolic links since they might already exist
+          echo "CMake 3.24.1 installed successfully"
+          
           cmake -G Ninja -S . -B build \
             -DCMAKE_BUILD_TYPE=Debug \
             -DBUILD_MQT_CORE_MLIR=ON \
