@@ -112,10 +112,10 @@ jobs:
 
       # Upload artifacts
       - name: Upload Coverage Report
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: coverage-report
-          path: ${{ github.workspace }}/coverage/index.html   
+          path: ${{ github.workspace }}/coverage/index.html  
 
   cpp-test-mlir-windows:
     name: 🏁 Test MLIR with LLVM@${{ matrix.llvm-version }}
