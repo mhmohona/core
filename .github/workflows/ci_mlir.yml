@@ -262,6 +262,7 @@ jobs:
 
   cpp-test-mlir-coverage:
     name: 📊 MLIR Coverage with LLVM@${{ matrix.llvm-version }}
+    timeout-minutes: 30
     runs-on: ubuntu-24.04
     strategy:
       matrix:
