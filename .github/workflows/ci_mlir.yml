@@ -283,56 +283,102 @@ jobs:
       - name: Build MLIR components and directly run lit tests
         run: cmake --build build --config Release --target check-quantum-opt
 
-  coverage-collection-mlir:
-    name: 📊 Collect MLIR Coverage
+  cpp-coverage-mlir:
+    name: 🐧 Coverage MLIR with LLVM@${{ matrix.llvm-version }}
     runs-on: ubuntu-24.04
-    needs: cpp-test-mlir  # Depends on test job
+    strategy:
+      matrix:
+        llvm-version: [19, 20]
     env:
-      LLVM_VERSION: 20  # Focus on one version for coverage
-      LLVM_PROFILE_FILE: "quantum-opt-%p.profraw"
+      CMAKE_BUILD_PARALLEL_LEVEL: 4
+      FORCE_COLOR: 3
     steps:
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
+      # Check out the repository
+      - uses: actions/checkout@v4
         with:
-          name: coverage-build-${{ env.LLVM_VERSION }}
-          path: build-coverage
+          fetch-depth: 0
 
-      - name: Run tests with coverage instrumentation
+      # Install LLVM and MLIR
+      - name: Install llvm and mlir
         run: |
-          cd build-coverage
-          ctest -R quantum-opt -V --output-on-failure
+          sudo apt-get update
+          wget https://apt.llvm.org/llvm.sh -O ${{ runner.temp }}/llvm_install.sh
+          chmod +x ${{ runner.temp }}/llvm_install.sh
+          if sudo ${{ runner.temp }}/llvm_install.sh ${{ matrix.llvm-version }}; then
+            sudo apt-get install -y libmlir-${{ matrix.llvm-version }}-dev \
+                                    mlir-${{ matrix.llvm-version }}-tools \
+                                    clang-${{ matrix.llvm-version }} \
+             || exit 1
+          else
+            echo "Installation from script failed."
+            exit 1
+          fi
+          echo "CC=clang-${{ matrix.llvm-version }}" >> $GITHUB_ENV
+          echo "CXX=clang++-${{ matrix.llvm-version }}" >> $GITHUB_ENV
+          echo "MLIR_DIR=/usr/lib/llvm-${{ matrix.llvm-version }}/lib/cmake/mlir" >> $GITHUB_ENV
+          echo "LLVM_DIR=/usr/lib/llvm-${{ matrix.llvm-version }}/lib/cmake/llvm" >> $GITHUB_ENV
 
-      - name: Process coverage data
+      # Set up ccache for faster C++ builds
+      - name: Setup ccache
+        uses: Chocobo1/setup-ccache-action@v1
+        with:
+          prepend_symlinks_to_path: false
+          override_cache_key: c++-coverage-mlir
+
+      # Set up mold as linker for faster C++ builds
+      - name: Set up mold as linker
+        uses: rui314/setup-mold@v1
+
+      # Set up uv for faster Python package management
+      - name: Install the latest version of uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: 3.13
+          activate-environment: true
+
+      # Install Ninja
+      - name: Install Ninja
+        run: uv tool install ninja
+
+      # Install lit
+      - name: Install lit
+        run: uv pip install lit
+
+      # Configure CMake for MLIR with coverage
+      - name: Configure CMake for MLIR with coverage
         run: |
-          cd build-coverage
-          # Merge raw profiles
-          llvm-profdata-20 merge -sparse $LLVM_PROFILE_FILE -o quantum-opt.profdata
-          
-          # Generate lcov format
-          llvm-cov-20 show ./mlir/tools/quantum-opt/quantum-opt \
-            -instr-profile=quantum-opt.profdata \
-            -format=lcov > lcov.info
+          cmake -G Ninja -S . -B build_coverage \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_MQT_CORE_MLIR=ON \
+            -DLLVM_EXTERNAL_LIT=$(which lit) \
+            -DCMAKE_C_FLAGS="-fprofile-instr-generate -fcoverage-mapping" \
+            -DCMAKE_CXX_FLAGS="-fprofile-instr-generate -fcoverage-mapping"
 
-      - name: Upload coverage report
-        uses: actions/upload-artifact@v4
-        with:
-          name: mlir-coverage-report
-          path: build-coverage/lcov.info
+      # Build MLIR components
+      - name: Build MLIR components
+        run: cmake --build build_coverage --target quantum-opt
 
-  coverage-upload-mlir:
-    name: ⬆️ Upload MLIR Coverage
-    runs-on: ubuntu-latest
-    needs: coverage-collection-mlir
-    steps:
-      - name: Download coverage report
-        uses: actions/download-artifact@v4
-        with:
-          name: mlir-coverage-report
+      # Run lit tests with coverage
+      - name: Run lit tests with coverage
+        working-directory: build_coverage
+        run: $(which lit) ../mlir/test/quantum-opt --coverage
 
-      - name: Upload to Codecov
-        uses: codecov/codecov-action@v4
+      # Merge profraw files
+      - name: Merge profraw files
+        run: |
+          llvm-profdata merge build_coverage/test/*.profraw -o build_coverage/test/merged.profdata
+
+      # Generate lcov report
+      - name: Generate lcov report
+        run: |
+          llvm-cov export --format=lcov --instr-profile=build_coverage/test/merged.profdata build_coverage/mlir/tools/quantum-opt/quantum-opt > build_coverage/coverage.lcov
+
+      # Upload coverage to Codecov
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
         with:
-          file: lcov.info
-          flags: mlir
-          name: mlir-coverage
-          fail_ci_if_error: false        
+          files: build_coverage/coverage.lcov
+          flags: mlir-llvm${{ matrix.llvm-version }}
+          name: codecov-umbrella
+          fail_ci_if_error: true
+          verbose: true
