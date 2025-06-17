@@ -262,7 +262,10 @@ jobs:
 
   cpp-test-mlir-coverage:
     name: 📊 Test MLIR Coverage with LLVM@${{ matrix.llvm-version }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read # Required for the `actions/checkout` action
+      id-token: write # Required for the `codecov/codecov-action` action
     strategy:
       matrix:
         llvm-version: [19, 20]
@@ -271,10 +274,12 @@ jobs:
       CTEST_PARALLEL_LEVEL: 4
       FORCE_COLOR: 3
     steps:
+      # check out the repository
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      # install a specific version of the LLVM toolchain
       - name: Install llvm and mlir
         run: |
           sudo apt-get update
@@ -284,7 +289,7 @@ jobs:
             sudo apt-get install -y libmlir-${{ matrix.llvm-version }}-dev \
                                     mlir-${{ matrix.llvm-version }}-tools \
                                     clang-${{ matrix.llvm-version}} \
-            || exit 1
+             || exit 1
           else
             echo "Installation from script failed."
             exit 1
@@ -294,49 +299,49 @@ jobs:
           echo "MLIR_DIR=/usr/lib/llvm-${{ matrix.llvm-version }}/lib/cmake/mlir" >> $GITHUB_ENV
           echo "LLVM_DIR=/usr/lib/llvm-${{ matrix.llvm-version }}/lib/cmake/llvm" >> $GITHUB_ENV
 
+      # set up ccache for faster C++ builds
       - name: Setup ccache
         uses: Chocobo1/setup-ccache-action@v1
         with:
           prepend_symlinks_to_path: false
           override_cache_key: c++-coverage-mlir
 
+      # set up mold as linker for faster C++ builds
       - name: Set up mold as linker
         uses: rui314/setup-mold@v1
 
+      # set up uv for faster Python package management
+      - name: Install the latest version of uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: 3.13
+          activate-environment: true
+
+      # make sure ninja is installed
       - name: Install Ninja
         run: uv tool install ninja
 
+      # make sure the lit test runner is installed
       - name: Install lit
         run: uv pip install lit
 
-      - name: Configure CMake for Coverage
+      # configure the project with CMake
+      - name: Configure CMake for MLIR
         run: |
-          cmake -S . -B build \
-            -DCMAKE_BUILD_TYPE=Debug \
-            -DENABLE_COVERAGE=ON \
-            -DBUILD_MQT_CORE_MLIR=ON
+          cmake -G Ninja -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_MQT_CORE_MLIR=ON \
+            -DLLVM_EXTERNAL_LIT=$(which lit)
 
-      - name: Build MLIR Components
-        run: cmake --build build --config Debug
+      # build the project and run the tests
+      - name: Build MLIR components and directly run lit tests
+        run: cmake --build build --config Release --target check-quantum-opt
 
-      - name: Run Tests with Coverage
+      - name: Test
         run: ctest -C Debug --output-on-failure --test-dir build --repeat until-pass:3 --timeout 600
-
-      - name: Generate Coverage Report
-        run: |
-          lcov --directory build \
-                --capture \
-                --rc lcov_branch_coverage=1 \
-                --output-file coverage.info
-          lcov --extract coverage.info \
-                "${LLVM_DIR}/lib/*" \
-                "${MLIR_DIR}/lib/*" \
-                --output-file coverage_filtered.info
-          lcov --list coverage_filtered.info
-
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@18283e04ce6e62d37312384ff67231eb8fd56d24 # v5
         with:
           fail_ci_if_error: true
           flags: cpp
-          use_oidc: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork) }}       
+          use_oidc: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork) }}
