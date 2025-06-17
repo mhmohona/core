@@ -333,7 +333,6 @@ jobs:
             -DMLIR_INCLUDE_INTEGRATION_TESTS=ON \
             -DMLIR_ENABLE_COVERAGE=ON \
             -DMLIR_COVERAGE_EXCLUDE="tools/quantum-opt/test/*"
-            -DENABLE_COVERAGE=ON \
             -DCMAKE_C_COMPILER=$CC \
             -DCMAKE_CXX_COMPILER=$CXX
 
