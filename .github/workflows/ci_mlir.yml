@@ -260,86 +260,94 @@ jobs:
       - name: Build MLIR components and directly run lit tests
         run: cmake --build build --config Release --target check-quantum-opt
 
-  cpp-test-mlir-coverage:
-      name: 📊 Test MLIR Coverage with LLVM@${{ matrix.llvm-version }}
-      runs-on: ubuntu-latest
-      strategy:
-        matrix:
-          llvm-version: [19, 20]
-      env:
-        CMAKE_BUILD_PARALLEL_LEVEL: 4
-        CTEST_PARALLEL_LEVEL: 4
-        FORCE_COLOR: 3
-      steps:
-        # check out the repository
-        - uses: actions/checkout@v4
-          with:
-            fetch-depth: 0
 
-        # install a specific version of the LLVM toolchain
-        - name: Install llvm and mlir
-          run: |
-            sudo apt-get update
-            wget https://apt.llvm.org/llvm.sh -O ${{ runner.temp }}/llvm_install.sh
-            chmod +x ${{ runner.temp }}/llvm_install.sh
-            if sudo ${{ runner.temp }}/llvm_install.sh ${{ matrix.llvm-version }}; then
-              sudo apt-get install -y libmlir-${{ matrix.llvm-version }}-dev \
-                                      mlir-${{ matrix.llvm-version }}-tools \
-                                      clang-${{ matrix.llvm-version}} \
-              || exit 1
-            else
-              echo "Installation from script failed."
-              exit 1
-            fi
-            echo "CC=clang-${{ matrix.llvm-version }}" >> $GITHUB_ENV
-            echo "CXX=clang++-${{ matrix.llvm-version }}" >> $GITHUB_ENV
-            echo "MLIR_DIR=/usr/lib/llvm-${{ matrix.llvm-version }}/lib/cmake/mlir" >> $GITHUB_ENV
-            echo "LLVM_DIR=/usr/lib/llvm-${{ matrix.llvm-version }}/lib/cmake/llvm" >> $GITHUB_ENV
+  mlir-coverage:
+    name: 📊 Test MLIR Coverage with LLVM ${{ matrix.llvm-version }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      CMAKE_BUILD_PARALLEL_LEVEL: 4
+      CTEST_PARALLEL_LEVEL: 4
+      FORCE_COLOR: 3
+    strategy:
+      matrix:
+        llvm-version: [19, 20]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-        # set up ccache for faster C++ builds
-        - name: Setup ccache
-          uses: Chocobo1/setup-ccache-action@v1
-          with:
-            prepend_symlinks_to_path: false
-            override_cache_key: c++-coverage-mlir
+      - name: Install llvm and mlir
+        run: |
+          sudo apt-get update
+          wget https://apt.llvm.org/llvm.sh -O ${{ runner.temp }}/llvm_install.sh
+          chmod +x ${{ runner.temp }}/llvm_install.sh
+          if sudo ${{ runner.temp }}/llvm_install.sh ${{ matrix.llvm-version }}; then
+            sudo apt-get install -y libmlir-${{ matrix.llvm-version }}-dev \
+                                    mlir-${{ matrix.llvm-version }}-tools \
+                                    clang-${{ matrix.llvm-version}} \
+            || exit 1
+          else
+            echo "Installation from script failed."
+            exit 1
+          fi
+          echo "CC=clang-${{ matrix.llvm-version }}" >> $GITHUB_ENV
+          echo "CXX=clang++-${{ matrix.llvm-version }}" >> $GITHUB_ENV
+          echo "MLIR_DIR=/usr/lib/llvm-${{ matrix.llvm-version }}/lib/cmake/mlir" >> $GITHUB_ENV
+          echo "LLVM_DIR=/usr/lib/llvm-${{ matrix.llvm-version }}/lib/cmake/llvm" >> $GITHUB_ENV
 
-        - name: Set up mold as linker
-          uses: rui314/setup-mold@v1
+      - name: Setup ccache
+        uses: Chocobo1/setup-ccache-action@v1
+        with:
+          prepend_symlinks_to_path: false
+          override_cache_key: c++-coverage-mlir
 
-        - name: Install Ninja
-          run: uv tool install ninja
+      - name: Set up mold as linker
+        uses: rui314/setup-mold@v1
 
-        - name: Install lit
-          run: uv pip install lit
+      - name: Install the latest version of uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: 3.13
+          activate-environment: true
 
-        - name: Configure CMake for Coverage
-          run: |
-            cmake -S . -B build \
-              -DCMAKE_BUILD_TYPE=Debug \
-              -DENABLE_COVERAGE=ON \
-              -DBUILD_MQT_CORE_MLIR=ON
+      - name: Install Ninja
+        run: uv tool install ninja
 
-        - name: Build MLIR Components
-          run: cmake --build build --config Debug
+      - name: Install lit
+        run: uv pip install lit
 
-        - name: Run Tests with Coverage
-          run: ctest -C Debug --output-on-failure --test-dir build --repeat until-pass:3 --timeout 600
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
 
-        - name: Generate Coverage Report
-          run: |
-            lcov --directory build \
-                  --capture \
-                  --rc lcov_branch_coverage=1 \
-                  --output-file coverage.info
-            lcov --extract coverage.info \
-                  "${LLVM_DIR}/lib/*" \
-                  "${MLIR_DIR}/lib/*" \
-                  --output-file coverage_filtered.info
-            lcov --list coverage_filtered.info
+      - name: Install grcov
+        run: cargo install grcov
 
-        - name: Upload coverage to Codecov
-          uses: codecov/codecov-action@v5
-          with:
-            fail_ci_if_error: true
-            flags: cpp
-            use_oidc: true
+      - name: Configure CMake for MLIR with coverage
+        run: |
+          cmake -G Ninja -S . -B build \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DBUILD_MQT_CORE_MLIR=ON \
+            -DLLVM_BUILD_INSTRUMENTED_COVERAGE=On \
+            -DLLVM_EXTERNAL_LIT=$(which lit)
+
+      - name: Build MLIR with coverage
+        run: cmake --build build --config Debug
+
+      - name: Run MLIR tests
+        run: cmake --build build --config Debug --target check-quantum-opt
+
+      - name: Generate coverage report
+        run: grcov $(find build -name "*.profraw") --binary-path build/ --source-dir mlir/ --output-type cobertura --output coverage.xml --ignore-not-existing
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          fail_ci_if_error: true
+          flags: mlir
+          verbose: true
