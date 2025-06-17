@@ -335,10 +335,11 @@ jobs:
 
       # build the project and run the tests
       - name: Build MLIR components and directly run lit tests
-        run: cmake --build build --config Release --target check-quantum-opt
+        run: cmake --build build --config Release --target all
 
       - name: Test
         run: ctest -C Debug --output-on-failure --test-dir build --repeat until-pass:3 --timeout 600
+        
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@18283e04ce6e62d37312384ff67231eb8fd56d24 # v5
         with:
