@@ -327,9 +327,16 @@ jobs:
       - name: Configure CMake for MLIR Coverage
         run: |
           cmake -G Ninja -S . -B build \
-            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_BUILD_TYPE=Debug \
             -DBUILD_MQT_CORE_MLIR=ON \
-            -DLLVM_EXTERNAL_LIT=$(which lit)            
+            -DLLVM_EXTERNAL_LIT=$(which lit) \
+            -DCMAKE_CXX_FLAGS="--coverage" \
+           -DCMAKE_C_FLAGS="--coverage" \
+           -DBUILD_MQT_CORE_MLIR=ON \
+           -DLLVM_EXTERNAL_LIT=$(which lit)
+
+      - name: Debug - List build/bin contents
+        run: ls -l build/bin     
 
       # build the project and run the tests with coverage
       - name: Build MLIR components and run tests with coverage
@@ -337,6 +344,18 @@ jobs:
           cmake --build build --config Debug --target check-quantum-opt
 
       # generate coverage report
+      - name: Generate coverage report with llvm-cov
+        run: |
+          cd build
+          llvm-profdata-${{ matrix.llvm-version }} merge -sparse default.profraw -o default.profdata
+          llvm-cov-${{ matrix.llvm-version }} show ./bin/quantum-opt \
+            -instr-profile=default.profdata \
+            -format=lcov > ../mlir_coverage.info
+      
+      - name: Debug - Check for coverage file
+        run: ls -lah mlir_coverage.info
+            
+      # upload coverage report
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
