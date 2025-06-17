@@ -306,36 +306,30 @@ jobs:
           prepend_symlinks_to_path: false
           override_cache_key: c++-coverage-mlir
 
-      # set up mold as linker for faster C++ builds
-      - name: Set up mold as linker
-        uses: rui314/setup-mold@v1
-
-      # set up uv for faster Python package management
-      - name: Install the latest version of uv
-        uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
         with:
-          python-version: 3.13
-          activate-environment: true
-
-      # make sure ninja is installed
+          submodules: recursive
+          fetch-depth: 0
+      - if: ${{ inputs.setup-z3 }}
+        name: Setup Z3
+        uses: cda-tum/setup-z3@34d1e04d31a168fa330626fad1275cf23de02591 # v1
+        with:
+          version: ${{ inputs.z3-version }}
+      - name: Setup ccache
+        uses: Chocobo1/setup-ccache-action@563420fe2f8f1dd18ad6e58deeb3abfc1b28819e # v1
+        with:
+          prepend_symlinks_to_path: false
+          override_cache_key: c++-coverage
+      - name: Set up mold as linker
+        uses: rui314/setup-mold@b3958095189f34b95d402a680b6e96b7f194f7b9 # v1
       - name: Install Ninja
-        run: uv tool install ninja
-
-      # make sure the lit test runner is installed
-      - name: Install lit
-        run: uv pip install lit
-
-      # configure the project with CMake
-      - name: Configure CMake for MLIR
+        run: pipx install ninja
+      - name: Configure CMake
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DENABLE_COVERAGE=ON ${{ inputs.cmake-args }}
-
-      # build the project and run the tests
-      - name: Build MLIR components and directly run lit tests
-        run: cmake --build build --config Release --target all
-
+      - name: Build
+        run: cmake --build build --config Debug
       - name: Test
         run: ctest -C Debug --output-on-failure --test-dir build --repeat until-pass:3 --timeout 600
-
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@18283e04ce6e62d37312384ff67231eb8fd56d24 # v5
         with:
