@@ -263,20 +263,27 @@ jobs:
   cpp-test-mlir-coverage:
     name: 📊 MLIR Coverage with LLVM@${{ matrix.llvm-version }}
     runs-on: ubuntu-24.04
+
+    permissions:
+      contents: read
+      id-token: write
+
     strategy:
       matrix:
         llvm-version: [19, 20]
+
     env:
       CMAKE_BUILD_PARALLEL_LEVEL: 4
       CTEST_PARALLEL_LEVEL: 4
       FORCE_COLOR: 3
+
     steps:
-      # check out the repository
+      # ✅ Checkout code with full history (fetch-depth: 0) for coverage mapping
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # install a specific version of the LLVM toolchain
+      # ✅ Install LLVM and MLIR
       - name: Install llvm and mlir
         run: |
           sudo apt-get update
@@ -284,10 +291,9 @@ jobs:
           chmod +x ${{ runner.temp }}/llvm_install.sh
           if sudo ${{ runner.temp }}/llvm_install.sh ${{ matrix.llvm-version }}; then
             sudo apt-get install -y libmlir-${{ matrix.llvm-version }}-dev \
-                        mlir-${{ matrix.llvm-version }}-tools \
-                        clang-${{ matrix.llvm-version }} \
-                        llvm-${{ matrix.llvm-version }}-tools \
-            || exit 1
+                                    mlir-${{ matrix.llvm-version }}-tools \
+                                    clang-${{ matrix.llvm-version }} \
+                                    llvm-${{ matrix.llvm-version }}-tools || exit 1
           else
             echo "Installation from script failed."
             exit 1
@@ -297,33 +303,28 @@ jobs:
           echo "MLIR_DIR=/usr/lib/llvm-${{ matrix.llvm-version }}/lib/cmake/mlir" >> $GITHUB_ENV
           echo "LLVM_DIR=/usr/lib/llvm-${{ matrix.llvm-version }}/lib/cmake/llvm" >> $GITHUB_ENV
 
-      # set up ccache for faster C++ builds
       - name: Setup ccache
         uses: Chocobo1/setup-ccache-action@v1
         with:
           prepend_symlinks_to_path: false
           override_cache_key: c++-coverage-mlir
 
-      # set up mold as linker for faster C++ builds
       - name: Set up mold as linker
         uses: rui314/setup-mold@v1
 
-      # set up uv for faster Python package management
       - name: Install the latest version of uv
         uses: astral-sh/setup-uv@v6
         with:
           python-version: 3.13
           activate-environment: true
 
-      # make sure ninja is installed
       - name: Install Ninja
         run: uv tool install ninja
 
-      # make sure the lit test runner is installed
       - name: Install lit
         run: uv pip install lit
 
-      # configure the project with coverage instrumentation
+      # ✅ Configure CMake with coverage flags
       - name: Configure CMake for MLIR Coverage
         run: |
           cmake -G Ninja -S . -B build \
@@ -335,37 +336,34 @@ jobs:
             -DBUILD_MQT_CORE_MLIR=ON \
             -DLLVM_EXTERNAL_LIT=$(which lit)
 
-      # debug build/bin contents (should contain your executables)
       - name: Debug - List build/bin contents
-        run: ls -l build/bin     
+        run: ls -l build/bin
 
-      # set LLVM_PROFILE_FILE environment for coverage data output
+      # ✅ Set LLVM_PROFILE_FILE to write profile data
       - name: Set LLVM_PROFILE_FILE env var
         run: echo "LLVM_PROFILE_FILE=default.profraw" >> $GITHUB_ENV
 
-      # build the project and run the tests with coverage
+      # ✅ Build and run tests (generates `default.profraw`)
       - name: Build MLIR components and run tests with coverage
         run: |
           cmake --build build --config Debug --target check-quantum-opt
 
-      # debug if profraw was generated
       - name: Debug - Check for profraw file
         run: ls -lh default.profraw || echo "No default.profraw coverage file found"
 
-      # generate coverage report
+      # ✅ Generate `.info` report using llvm-cov
       - name: Generate coverage report with llvm-cov
         run: |
           cd build
-          llvm-profdata-${{ matrix.llvm-version }} merge -sparse default.profraw -o default.profdata
+          llvm-profdata-${{ matrix.llvm-version }} merge -sparse ../default.profraw -o default.profdata
           llvm-cov-${{ matrix.llvm-version }} show ./bin/quantum-opt \
             -instr-profile=default.profdata \
             -format=lcov > ../mlir_coverage.info
 
-      # debug if coverage file was generated
       - name: Debug - Check for coverage file
         run: ls -lah mlir_coverage.info || echo "No coverage info file found"
-          
-      # upload coverage report
+
+      # ✅ Upload to Codecov using OIDC (tokenless auth)
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
