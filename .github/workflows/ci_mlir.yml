@@ -260,7 +260,6 @@ jobs:
       - name: Build MLIR components and directly run lit tests
         run: cmake --build build --config Release --target check-quantum-opt
 
-
   mlir-coverage:
     name: 📊 Test MLIR Coverage with LLVM ${{ matrix.llvm-version }}
     runs-on: ubuntu-24.04
