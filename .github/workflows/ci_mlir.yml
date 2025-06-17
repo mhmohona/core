@@ -327,11 +327,7 @@ jobs:
 
       # configure the project with CMake
       - name: Configure CMake for MLIR
-        run: |
-          cmake -G Ninja -S . -B build \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DBUILD_MQT_CORE_MLIR=ON \
-            -DLLVM_EXTERNAL_LIT=$(which lit)
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DENABLE_COVERAGE=ON ${{ inputs.cmake-args }}
 
       # build the project and run the tests
       - name: Build MLIR components and directly run lit tests
@@ -339,7 +335,7 @@ jobs:
 
       - name: Test
         run: ctest -C Debug --output-on-failure --test-dir build --repeat until-pass:3 --timeout 600
-        
+
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@18283e04ce6e62d37312384ff67231eb8fd56d24 # v5
         with:
