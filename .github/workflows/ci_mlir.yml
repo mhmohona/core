@@ -90,29 +90,6 @@ jobs:
       # build the project and run the tests
       - name: Build MLIR components and directly run lit tests
         run: cmake --build build --config Release --target check-quantum-opt
-  
-      # Add these steps to the cpp-test-mlir job
-      - name: Configure coverage build (LLVM 20 only)
-        if: matrix.llvm-version == 20
-        run: |
-          cmake -G Ninja -S . -B build-coverage \
-            -DCMAKE_BUILD_TYPE=Debug \
-            -DBUILD_MQT_CORE_MLIR=ON \
-            -DLLVM_EXTERNAL_LIT=$(which lit) \
-            -DCMAKE_CXX_FLAGS="-fprofile-instr-generate -fcoverage-mapping" \
-            -DCMAKE_C_FLAGS="-fprofile-instr-generate -fcoverage-mapping"
-
-      - name: Build coverage instrumentation (LLVM 20 only)
-        if: matrix.llvm-version == 20
-        run: cmake --build build-coverage --target quantum-opt
-
-      - name: Archive coverage build
-        if: matrix.llvm-version == 20
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-build-${{ matrix.llvm-version }}
-          path: build-coverage
-          retention-days: 1        
 
   cpp-test-mlir-windows:
     name: 🏁 Test MLIR with LLVM@${{ matrix.llvm-version }}
@@ -283,22 +260,23 @@ jobs:
       - name: Build MLIR components and directly run lit tests
         run: cmake --build build --config Release --target check-quantum-opt
 
-  cpp-coverage-mlir:
-    name: 🐧 Coverage MLIR with LLVM@${{ matrix.llvm-version }}
+  cpp-test-mlir-coverage:
+    name: 📊 MLIR Coverage with LLVM@${{ matrix.llvm-version }}
     runs-on: ubuntu-24.04
     strategy:
       matrix:
         llvm-version: [19, 20]
     env:
       CMAKE_BUILD_PARALLEL_LEVEL: 4
+      CTEST_PARALLEL_LEVEL: 4
       FORCE_COLOR: 3
     steps:
-      # Check out the repository
+      # check out the repository
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # Install LLVM and MLIR
+      # install a specific version of the LLVM toolchain
       - name: Install llvm and mlir
         run: |
           sudo apt-get update
@@ -306,8 +284,9 @@ jobs:
           chmod +x ${{ runner.temp }}/llvm_install.sh
           if sudo ${{ runner.temp }}/llvm_install.sh ${{ matrix.llvm-version }}; then
             sudo apt-get install -y libmlir-${{ matrix.llvm-version }}-dev \
-                                    mlir-${{ matrix.llvm-version }}-tools \
-                                    clang-${{ matrix.llvm-version }} \
+                        mlir-${{ matrix.llvm-version }}-tools \
+                        clang-${{ matrix.llvm-version }} \
+                        llvm-${{ matrix.llvm-version }}-tools \
              || exit 1
           else
             echo "Installation from script failed."
@@ -318,67 +297,57 @@ jobs:
           echo "MLIR_DIR=/usr/lib/llvm-${{ matrix.llvm-version }}/lib/cmake/mlir" >> $GITHUB_ENV
           echo "LLVM_DIR=/usr/lib/llvm-${{ matrix.llvm-version }}/lib/cmake/llvm" >> $GITHUB_ENV
 
-      # Set up ccache for faster C++ builds
+      # set up ccache for faster C++ builds
       - name: Setup ccache
         uses: Chocobo1/setup-ccache-action@v1
         with:
           prepend_symlinks_to_path: false
           override_cache_key: c++-coverage-mlir
 
-      # Set up mold as linker for faster C++ builds
+      # set up mold as linker for faster C++ builds
       - name: Set up mold as linker
         uses: rui314/setup-mold@v1
 
-      # Set up uv for faster Python package management
+      # set up uv for faster Python package management
       - name: Install the latest version of uv
         uses: astral-sh/setup-uv@v6
         with:
           python-version: 3.13
           activate-environment: true
 
-      # Install Ninja
+      # make sure ninja is installed
       - name: Install Ninja
         run: uv tool install ninja
 
-      # Install lit
+      # make sure the lit test runner is installed
       - name: Install lit
         run: uv pip install lit
 
-      # Configure CMake for MLIR with coverage
-      - name: Configure CMake for MLIR with coverage
+      # configure the project with CMake for coverage
+      - name: Configure CMake for MLIR Coverage
         run: |
-          cmake -G Ninja -S . -B build_coverage \
-            -DCMAKE_BUILD_TYPE=Release \
+          cmake -G Ninja -S . -B build \
+            -DCMAKE_BUILD_TYPE=Debug \
             -DBUILD_MQT_CORE_MLIR=ON \
             -DLLVM_EXTERNAL_LIT=$(which lit) \
-            -DCMAKE_C_FLAGS="-fprofile-instr-generate -fcoverage-mapping" \
-            -DCMAKE_CXX_FLAGS="-fprofile-instr-generate -fcoverage-mapping"
+            -DMLIR_INCLUDE_INTEGRATION_TESTS=ON \
+            -DMLIR_ENABLE_COVERAGE=ON \
+            -DMLIR_COVERAGE_EXCLUDE="tools/quantum-opt/test/*"
+            -DENABLE_COVERAGE=ON \
+            -DCMAKE_C_COMPILER=$CC \
+            -DCMAKE_CXX_COMPILER=$CXX
 
-      # Build MLIR components
-      - name: Build MLIR components
-        run: cmake --build build_coverage --target quantum-opt
-
-      # Run lit tests with coverage
-      - name: Run lit tests with coverage
-        working-directory: build_coverage
-        run: $(which lit) ../mlir/test/quantum-opt --coverage
-
-      # Merge profraw files
-      - name: Merge profraw files
+      # build the project and run the tests with coverage
+      - name: Build MLIR components and run tests with coverage
         run: |
-          llvm-profdata merge build_coverage/test/*.profraw -o build_coverage/test/merged.profdata
+          cmake --build build --config Debug --target check-quantum-opt
 
-      # Generate lcov report
-      - name: Generate lcov report
-        run: |
-          llvm-cov export --format=lcov --instr-profile=build_coverage/test/merged.profdata build_coverage/mlir/tools/quantum-opt/quantum-opt > build_coverage/coverage.lcov
-
-      # Upload coverage to Codecov
+      # generate coverage report
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v5
         with:
-          files: build_coverage/coverage.lcov
-          flags: mlir-llvm${{ matrix.llvm-version }}
-          name: codecov-umbrella
+          files: mlir_coverage.info
+          flags: MLIR
+          name: MLIR Coverage Report
           fail_ci_if_error: true
-          verbose: true
+          use_oidc: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork) }}
