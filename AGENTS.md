@@ -10,7 +10,7 @@
 - **Platform**: Target Linux, macOS, and Windows for x86_64 (amd64) and arm64.
 - **Python Context**: Version 3.10+ managed via **uv**.
 - **C++ Context**: C++20 standard required; **LLVM 21.1+** mandatory for MLIR infrastructure.
-- **Tooling Access**: Full access to `uv`. `cmake`, `nox`, and further tools are available through `uv` (via `uvx <tool>`)
+- **Tooling Access**: Full access to `uv`. `cmake`, `nox`, and further tools are available through `uv` (via `uvx <tool>`).
 
 ## Repository Mapping
 
@@ -30,19 +30,18 @@
 
 ### C++ Workflows
 
-- Configure Release build: `cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_MQT_CORE_TESTS=ON`.
-- Configure Debug build: `cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DBUILD_MQT_CORE_TESTS=ON`.
-- Build the library: `cmake --build build --parallel <jobs>`.
-  Alternatively, configure with `-G Ninja`, which handles parallel builds automatically.
-- Run C++ tests: `ctest --test-dir build -C Release --output-on-failure`.
-- Run MLIR unit tests: `ctest --test-dir build -C Release -L mqt-mlir-unittests --output-on-failure`.
-- Run a single C++ test: `ctest --test-dir build -C Release -R <test_name>`.
-- C++ artifacts are located in `build/src/` (libraries), `build/test/` (test executables), and `build/mlir/` (MLIR build output).
+- Configure Release build: `cmake -S . -B build_cxx -DCMAKE_BUILD_TYPE=Release -G Ninja`.
+- Configure Debug build: `cmake -S . -B build_cxx -DCMAKE_BUILD_TYPE=Debug -G Ninja`.
+- Build the library: `cmake --build build_cxx`.
+- Run C++ tests: Execute the compiled test binaries directly (e.g., `./build_cxx/test/algorithms/mqt-core-algorithms-test`).
+- Run MLIR tests: Execute the compiled test binaries directly (e.g., `./build_cxx/mlir/unittests/Compiler/mqt-core-mlir-unittests-compiler`).
+- C++ artifacts are located in `build_cxx/src/` (libraries), `build_cxx/test/` (test executables), and `build_cxx/mlir/` (MLIR build output).
 
 ### Python Workflows
 
 - Sync the Python environment: `uv sync`.
 - Run the full test suite: `uvx nox -s tests`.
+- Run tests for a single Python version (faster): `uvx nox -s tests-3.13`.
 - Run targeted tests: `uv run pytest test/python/dd/`.
 - Filter Python tests: `uvx nox -s tests -- -k "<test_name>"`.
 - Test minimum dependency versions: `uvx nox -s minimums`.
@@ -62,7 +61,7 @@
 - The project targets **C++20** and **Python 3.10+** as the strict minimum language versions.
 - The build system relies on **CMake 3.24+** and **scikit-build-core**.
 - **uv** is the project's package manager; `pip` and manual `venv` are not used.
-- Python bindings are implemented with **nanobind** (~2.11.0); `pybind11` is not used.
+- Python bindings are implemented with **nanobind**; `pybind11` is not used.
 - **ruff** handles linting and formatting, with `ALL` rules enabled by default.
 - **ty** serves as the static type checker, replacing `mypy`.
 - **LLVM 21.1+** powers the MLIR-based compilation dialects.
@@ -70,7 +69,7 @@
 
 ## Development Guidelines
 
-- Prioritize C++20 `std::` features over custom implementations.
+- Prioritize C++20 STL features over custom implementations. Within the MLIR codebase (`mlir/`), prefer LLVM data structures and methods (`llvm::SmallVector`, `llvm::function_ref`, etc.) over the STL.
 - Use Google-style docstrings for Python and Doxygen comments for C++.
 - Run `uvx nox -s lint` after every change; all checks (ruff, typos, ty) must pass before submitting.
 - Add or update tests for every code change, even if not explicitly requested.
@@ -80,11 +79,12 @@
 ## Self-Review Checklist
 
 - Did `uvx nox -s lint` pass without errors?
-- Are all changes covered by at least one automated test (pytest or ctest)?
+- Are all changes covered by at least one automated test (Python or C++)?
 - Were Python stubs regenerated via `uvx nox -s stubs` if bindings were modified?
 - Are there any manual edits to `.pyi` files (which are forbidden)?
 - Do all source files include the MIT license and SPDX headers?
 - Are [CHANGELOG.md](docs/CHANGELOG.md) and [UPGRADING.md](docs/UPGRADING.md) updated if needed?
+- Did you use exact terminology (**circuit qubits** vs **device qubits**)?
 
 ## Rules
 
