@@ -83,7 +83,7 @@
 - Are there any manual edits to `.pyi` files (which are forbidden)?
 - Do all source files include the MIT license and SPDX headers?
 - Are [CHANGELOG.md](docs/CHANGELOG.md) and [UPGRADING.md](docs/UPGRADING.md) updated if needed?
-- Did you use exact terminology (**circuit qubits** vs **device qubits**)?
+
 
 ## Rules
 
