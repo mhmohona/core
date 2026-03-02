@@ -35,7 +35,6 @@
 - Build the library: `cmake --build build_cxx`.
 - Run C++ tests: Execute the compiled test binaries directly (e.g., `./build_cxx/test/algorithms/mqt-core-algorithms-test`).
 - Run MLIR tests: Execute the compiled test binaries directly (e.g., `./build_cxx/mlir/unittests/Compiler/mqt-core-mlir-unittests-compiler`).
-- C++ artifacts are located in `build_cxx/src/` (libraries), `build_cxx/test/` (test executables), and `build_cxx/mlir/` (MLIR build output).
 
 ### Python Workflows
 
