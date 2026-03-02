@@ -84,7 +84,6 @@
 - Do all source files include the MIT license and SPDX headers?
 - Are [CHANGELOG.md](docs/CHANGELOG.md) and [UPGRADING.md](docs/UPGRADING.md) updated if needed?
 
-
 ## Rules
 
 - Use `ALL` ruff rules and selectively disable in `pyproject.toml`.
